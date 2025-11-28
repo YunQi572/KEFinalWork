@@ -17,7 +17,7 @@ class DBManager:
     """MySQL数据库管理器类"""
     
     def __init__(self, host='localhost', port=3306, user='root', 
-                 password='', database=''):
+                 password='xyd123456', database='kproject'):
         """
         初始化数据库管理器
         
@@ -27,14 +27,12 @@ class DBManager:
             user: 用户名
             password: 密码
             database: 数据库名
-            charset: 字符编码
         """
         self.host = host
         self.port = port
         self.user = user
         self.password = password
         self.database = database
-        # self.charset = charset
         self.connection = None
         
     def connect(self) -> bool:
@@ -51,7 +49,7 @@ class DBManager:
                 user=self.user,
                 password=self.password,
                 database=self.database,
-                # charset=self.charset,
+                charset='utf8mb4',
                 cursorclass=DictCursor,
                 autocommit=False
             )
@@ -79,21 +77,13 @@ class DBManager:
 
 # 使用示例
 if __name__ == "__main__":
-    # 创建数据库管理器实例
-    db = DBManager(
-        host='localhost',
-        user='root',
-        password='',  # 请修改为实际密码
-        database=''    # 请修改为实际数据库名
-    )
+    # 创建数据库管理器实例(使用默认配置)
+    db = DBManager()
     
-    # 方式1: 手动连接和断开
+    # 测试连接
     if db.connect():
-        print('连接成功')
-        # 查询示例
-        results = db.select('your_table', limit=10)
-        if results:
-            for row in results:
-                print(row)
-        
+        print('连接成功!')
+        print(f'数据库: {db.database}@{db.host}:{db.port}')
         db.disconnect()
+    else:
+        print('连接失败，请检查数据库配置')
