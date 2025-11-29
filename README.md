@@ -49,7 +49,7 @@
 
 ### 3. 后端安装与运行
 
-``powershell
+```powershell
 # 进入后端目录
 cd src
 
@@ -71,7 +71,7 @@ python main.py
 
 ### 4. 前端安装与运行
 
-``powershell
+```powershell
 # 进入前端目录
 cd ui
 
