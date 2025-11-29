@@ -152,5 +152,25 @@ export default {
     return apiClient.get('/image/analysis-history', {
       params: { limit }
     })
+  },
+
+  /**
+   * 添加高级节点
+   * @param {string} nodeName - 要标记为高级节点的节点名称
+   */
+  addHighLevelNode(nodeName) {
+    return apiClient.post('/graph/add-high-level-node', null, {
+      params: { node_name: nodeName }
+    })
+  },
+
+  /**
+   * 移除高级节点标记
+   * @param {string} nodeName - 要移除的高级节点名称
+   */
+  removeHighLevelNode(nodeName) {
+    return apiClient.delete('/graph/remove-high-level-node', {
+      params: { node_name: nodeName }
+    })
   }
 }

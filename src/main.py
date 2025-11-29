@@ -1,7 +1,7 @@
 """
 松材线虫病知识图谱系统 - FastAPI后端
 """
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -43,11 +43,46 @@ DB_CONFIG = {
     'host': 'localhost',
     'port': 3306,
     'user': 'root',
-    'password': '20050702g',
+    'password': '123456',
     'database': 'KEFinalWork',
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
 }
+
+HIGH_LEVEL_NODE_TABLE = "graph_high_level_nodes"
+
+_CORE_HIGH_LEVEL_NODE_RECORDS = [
+    {"node_name": "松材线虫病", "node_type": "core", "description": "核心病害概念"},
+    {"node_name": "松材线虫", "node_type": "core", "description": "主要病原线虫"},
+    {"node_name": "松墨天牛", "node_type": "core", "description": "重要媒介昆虫"},
+    {"node_name": "寄主", "node_type": "core", "description": "宿主整体概念"},
+    {"node_name": "媒介昆虫", "node_type": "core", "description": "媒介总体类别"},
+]
+
+_GENERIC_HIGH_LEVEL_NODE_NAMES = [
+    '省份', '城市', '中国', '松属', '阔叶树', '天牛', '天敌昆虫',
+    '线虫', '真菌', '算法', '遥感技术', '分子生物学技术', '年份',
+    '病害', '农药药剂', '研究模型与软件', '基因', '代谢通路',
+    '物理防治', '化学防治', '营林防治', '检疫措施', '生理指标',
+    '风险评估', '早期诊断', '森林保护学', '森林昆虫学', '森林病理学',
+    '林业植物检疫学', '博士学位论文', '国家科技进步二等奖', '生态服务',
+    '多尺度监测', '能量代谢', '诊断', '天敌',
+    '种群动态模型', '植被指数', '光谱特征'
+]
+
+_existing_names = {node["node_name"] for node in _CORE_HIGH_LEVEL_NODE_RECORDS}
+DEFAULT_HIGH_LEVEL_NODE_RECORDS = [
+    *_CORE_HIGH_LEVEL_NODE_RECORDS,
+    *[
+        {
+            "node_name": name,
+            "node_type": "generic",
+            "description": "默认高级节点"
+        }
+        for name in _GENERIC_HIGH_LEVEL_NODE_NAMES
+        if name not in _existing_names
+    ]
+]
 
 
 # ==================== 数据模型 ====================
@@ -101,6 +136,11 @@ class EntityValidationRequest(BaseModel):
     validation_type: str = "disease_scenario"  # disease_scenario, relationship_check
 
 
+class HighLevelNodePayload(BaseModel):
+    """高级节点请求载体"""
+    node_name: str
+
+
 # ==================== 数据库操作 ====================
 @contextmanager
 def get_db():
@@ -137,8 +177,123 @@ def init_database():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
         
+        # 创建高级节点专用表
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {HIGH_LEVEL_NODE_TABLE} (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                node_name VARCHAR(255) UNIQUE NOT NULL,
+                node_type ENUM('core', 'generic') DEFAULT 'generic',
+                description VARCHAR(512) DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_node_name (node_name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        
         conn.commit()
         logger.info("数据库初始化完成")
+
+
+# ==================== 高级节点管理 ====================
+def load_high_level_nodes_from_db() -> set:
+    """从数据库加载高级节点"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT node_name FROM {HIGH_LEVEL_NODE_TABLE}")
+            nodes = {row["node_name"] for row in cursor.fetchall()}
+            logger.info(f"从数据库加载了 {len(nodes)} 个高级节点")
+            return nodes
+    except Exception as e:
+        logger.error(f"从数据库加载高级节点失败: {e}")
+        return set()
+
+
+def save_high_level_nodes_to_db(high_level_nodes: set, replace_all: bool = False):
+    """
+    保存高级节点到数据库
+    
+    Args:
+        high_level_nodes: 要保存的高级节点集合
+        replace_all: 如果为True，完全替换（删除旧的）；如果为False，增量更新（只添加新的）
+    """
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            if replace_all:
+                # 完全替换：删除所有旧节点
+                cursor.execute(f"DELETE FROM {HIGH_LEVEL_NODE_TABLE}")
+                logger.info("已清除所有旧的高级节点")
+            
+            # 获取现有的高级节点
+            cursor.execute(f"SELECT node_name FROM {HIGH_LEVEL_NODE_TABLE}")
+            existing_nodes = {row["node_name"] for row in cursor.fetchall()}
+            
+            # 找出新增的节点
+            new_nodes = high_level_nodes - existing_nodes
+            
+            if new_nodes:
+                # 插入新节点
+                cursor.executemany(
+                    f"INSERT IGNORE INTO {HIGH_LEVEL_NODE_TABLE} (node_name) VALUES (%s)",
+                    [(node,) for node in new_nodes]
+                )
+                conn.commit()
+                logger.info(f"新增 {len(new_nodes)} 个高级节点到数据库: {new_nodes}")
+            else:
+                logger.info("没有新增的高级节点")
+            
+            # 如果完全替换，返回新的节点集合；否则返回合并后的
+            if replace_all:
+                return high_level_nodes
+            else:
+                return existing_nodes | high_level_nodes
+    except Exception as e:
+        logger.error(f"保存高级节点到数据库失败: {e}")
+        return high_level_nodes
+
+
+def get_default_high_level_nodes() -> set:
+    """获取默认的高级节点名称集合"""
+    return {node["node_name"] for node in DEFAULT_HIGH_LEVEL_NODE_RECORDS}
+
+
+def get_default_high_level_node_records():
+    """返回默认高级节点的完整记录"""
+    return DEFAULT_HIGH_LEVEL_NODE_RECORDS
+
+
+def init_default_high_level_nodes():
+    """初始化默认的高级节点到数据库（如果数据库为空）"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT COUNT(*) as cnt FROM {HIGH_LEVEL_NODE_TABLE}")
+            count = cursor.fetchone()["cnt"]
+            
+            if count == 0:
+                # 数据库为空，初始化默认列表
+                default_nodes = get_default_high_level_node_records()
+                cursor.executemany(
+                    f"""
+                    INSERT IGNORE INTO {HIGH_LEVEL_NODE_TABLE} (node_name, node_type, description) 
+                    VALUES (%s, %s, %s)
+                    """,
+                    [
+                        (node["node_name"], node.get("node_type", "generic"), node.get("description"))
+                        for node in default_nodes
+                    ]
+                )
+                conn.commit()
+                logger.info(f"初始化了 {len(default_nodes)} 个默认高级节点到数据库")
+                return {node["node_name"] for node in default_nodes}
+            else:
+                logger.info(f"数据库中已有 {count} 个高级节点，跳过初始化")
+                return load_high_level_nodes_from_db()
+    except Exception as e:
+        logger.error(f"初始化默认高级节点失败: {e}")
+        return get_default_high_level_nodes()
 
 
 # ==================== API路由 ====================
@@ -176,39 +331,60 @@ async def get_graph():
     """
     获取完整知识图谱
     返回ECharts所需的nodes和links格式
+    
+    Args:
+        use_cache: 是否使用缓存的高级节点（默认True）
     """
     try:
         with get_db() as conn:
             cursor = conn.cursor()
-            
+
             # 查询所有三元组
             cursor.execute("SELECT * FROM knowledge_triples")
             triples = cursor.fetchall()
-            
+
             # 构建节点和边
             nodes_set = set()
             links = []
-            
+
             for triple in triples:
                 head = triple["head_entity"]
                 relation = triple["relation"]
                 tail = triple["tail_entity"]
-                
+
                 nodes_set.add(head)
                 nodes_set.add(tail)
-                
+
                 links.append({
                     "source": head,
                     "target": tail,
                     "value": relation,
                     "id": triple["id"]
                 })
+
+            # 从数据库加载高级节点（持久化存储）
+            high_level_nodes = load_high_level_nodes_from_db()
             
-            # 转换节点格式
-            nodes = [{"name": node, "id": node} for node in nodes_set]
-            
+            # 如果数据库中没有高级节点，初始化默认列表
+            if not high_level_nodes:
+                high_level_nodes = init_default_high_level_nodes()
+                # 只保留在图谱中实际存在的节点
+                high_level_nodes = high_level_nodes.intersection(nodes_set)
+            else:
+                logger.info(f"从数据库加载高级节点，共 {len(high_level_nodes)} 个")
+
+            # 转换节点格式，添加类别信息
+            nodes = []
+            for node in nodes_set:
+                node_data = {
+                    "name": node,
+                    "id": node,
+                    "category": 1 if node in high_level_nodes else 0  # 1=高级节点，0=普通节点
+                }
+                nodes.append(node_data)
+
             return GraphResponse(nodes=nodes, links=links)
-            
+
     except Exception as e:
         logger.error(f"获取图谱失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取图谱失败: {str(e)}")
@@ -226,13 +402,22 @@ async def delete_node(node: Node):
             # 删除包含该节点的所有三元组
             cursor.execute("""
                 DELETE FROM knowledge_triples 
-                WHERE head_entity = ? OR tail_entity = ?
+                WHERE head_entity = %s OR tail_entity = %s
             """, (node.name, node.name))
             
             deleted_count = cursor.rowcount
             conn.commit()
             
             logger.info(f"删除节点 {node.name}, 删除了 {deleted_count} 条记录")
+            
+            # 如果删除的节点是高级节点，也从高级节点表中删除
+            try:
+                cursor.execute(f"DELETE FROM {HIGH_LEVEL_NODE_TABLE} WHERE node_name = %s", (node.name,))
+                conn.commit()
+                logger.info(f"已从高级节点表中删除: {node.name}")
+            except Exception as e:
+                logger.warning(f"从高级节点表删除失败: {e}")
+            
             return {"message": f"成功删除节点 {node.name}", "deleted_count": deleted_count}
             
     except Exception as e:
@@ -252,21 +437,35 @@ async def update_node(update: UpdateNode):
             # 更新头实体
             cursor.execute("""
                 UPDATE knowledge_triples 
-                SET head_entity = ? 
-                WHERE head_entity = ?
+                SET head_entity = %s 
+                WHERE head_entity = %s
             """, (update.new_name, update.old_name))
             
             # 更新尾实体
             cursor.execute("""
                 UPDATE knowledge_triples 
-                SET tail_entity = ? 
-                WHERE tail_entity = ?
+                SET tail_entity = %s 
+                WHERE tail_entity = %s
             """, (update.new_name, update.old_name))
             
             updated_count = cursor.rowcount
             conn.commit()
             
             logger.info(f"更新节点 {update.old_name} -> {update.new_name}")
+            
+            # 如果旧节点是高级节点，更新高级节点表中的名称
+            try:
+                cursor.execute(f"""
+                    UPDATE {HIGH_LEVEL_NODE_TABLE} 
+                    SET node_name = %s 
+                    WHERE node_name = %s
+                """, (update.new_name, update.old_name))
+                conn.commit()
+                if cursor.rowcount > 0:
+                    logger.info(f"已更新高级节点表中的节点名称: {update.old_name} -> {update.new_name}")
+            except Exception as e:
+                logger.warning(f"更新高级节点表失败: {e}")
+            
             return {"message": f"成功更新节点", "updated_count": updated_count}
             
     except Exception as e:
@@ -283,7 +482,7 @@ async def delete_edge(edge_id: int):
         with get_db() as conn:
             cursor = conn.cursor()
             
-            cursor.execute("DELETE FROM knowledge_triples WHERE id = ?", (edge_id,))
+            cursor.execute("DELETE FROM knowledge_triples WHERE id = %s", (edge_id,))
             
             if cursor.rowcount == 0:
                 raise HTTPException(status_code=404, detail="边不存在")
@@ -314,8 +513,8 @@ async def update_edge(triple: Triple):
             
             cursor.execute("""
                 UPDATE knowledge_triples 
-                SET head_entity = ?, relation = ?, tail_entity = ?
-                WHERE id = ?
+                SET head_entity = %s, relation = %s, tail_entity = %s
+                WHERE id = %s
             """, (triple.head_entity, triple.relation, triple.tail_entity, triple.id))
             
             if cursor.rowcount == 0:
@@ -881,6 +1080,118 @@ async def get_knowledge_update_suggestions(entity_names: str = None):
     except Exception as e:
         logger.error(f"获取更新建议失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取更新建议失败: {str(e)}")
+
+
+@app.post("/api/graph/add-high-level-node")
+async def add_high_level_node(
+    node_name: Optional[str] = Query(
+        default=None,
+        description="要标记为高级节点的节点名称",
+        alias="node_name"
+    ),
+    payload: Optional[HighLevelNodePayload] = Body(default=None)
+):
+    """
+    手动添加高级节点
+    将数据库中已有的节点标记为高级节点
+    
+    Args:
+        node_name: 节点名称
+    """
+    resolved_name = node_name or (payload.node_name if payload else None)
+    if not resolved_name:
+        raise HTTPException(status_code=400, detail="节点名称不能为空")
+    
+    node_name = resolved_name.strip()
+    if not node_name:
+        raise HTTPException(status_code=400, detail="节点名称不能为空")
+    
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # 检查节点是否存在于知识图谱中
+            cursor.execute("""
+                SELECT COUNT(*) as cnt FROM knowledge_triples 
+                WHERE head_entity = %s OR tail_entity = %s
+            """, (node_name, node_name))
+            
+            if cursor.fetchone()["cnt"] == 0:
+                raise HTTPException(status_code=404, detail=f"节点 '{node_name}' 不存在于知识图谱中")
+            
+            # 检查是否已经是高级节点
+            cursor.execute(f"SELECT COUNT(*) as cnt FROM {HIGH_LEVEL_NODE_TABLE} WHERE node_name = %s", (node_name,))
+            if cursor.fetchone()["cnt"] > 0:
+                raise HTTPException(status_code=400, detail=f"节点 '{node_name}' 已经是高级节点")
+            
+            # 添加到高级节点表
+            cursor.execute(
+                f"INSERT INTO {HIGH_LEVEL_NODE_TABLE} (node_name, node_type) VALUES (%s, %s)",
+                (node_name, "generic")
+            )
+            conn.commit()
+            
+            logger.info(f"成功添加高级节点: {node_name}")
+            
+            return {
+                "message": f"成功将节点 '{node_name}' 标记为高级节点",
+                "node_name": node_name
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"添加高级节点失败: {e}")
+        raise HTTPException(status_code=500, detail=f"添加高级节点失败: {str(e)}")
+
+
+@app.delete("/api/graph/remove-high-level-node")
+async def remove_high_level_node(
+    node_name: Optional[str] = Query(
+        default=None,
+        description="要移除的高级节点名称",
+        alias="node_name"
+    ),
+    payload: Optional[HighLevelNodePayload] = Body(default=None)
+):
+    """
+    移除高级节点标记
+    将节点从高级节点列表中移除（但不会删除节点本身）
+    
+    Args:
+        node_name: 节点名称
+    """
+    resolved_name = node_name or (payload.node_name if payload else None)
+    if not resolved_name:
+        raise HTTPException(status_code=400, detail="节点名称不能为空")
+    
+    node_name = resolved_name.strip()
+    if not node_name:
+        raise HTTPException(status_code=400, detail="节点名称不能为空")
+    
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # 检查是否是高级节点
+            cursor.execute(f"SELECT COUNT(*) as cnt FROM {HIGH_LEVEL_NODE_TABLE} WHERE node_name = %s", (node_name,))
+            if cursor.fetchone()["cnt"] == 0:
+                raise HTTPException(status_code=404, detail=f"节点 '{node_name}' 不是高级节点")
+            
+            # 从高级节点表删除
+            cursor.execute(f"DELETE FROM {HIGH_LEVEL_NODE_TABLE} WHERE node_name = %s", (node_name,))
+            conn.commit()
+            
+            logger.info(f"成功移除高级节点标记: {node_name}")
+            
+            return {
+                "message": f"成功移除节点 '{node_name}' 的高级节点标记",
+                "node_name": node_name
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"移除高级节点失败: {e}")
+        raise HTTPException(status_code=500, detail=f"移除高级节点失败: {str(e)}")
 
 
 @app.get("/api/image/analysis-history")

@@ -46,15 +46,73 @@
         <el-button :icon="Refresh" @click="loadGraph" :loading="loading">
           刷新图谱
         </el-button>
+        <el-button 
+          type="success" 
+          :icon="Plus" 
+          @click="showAddHighLevelNodeDialog"
+          title="添加高级节点"
+        >
+          添加高级节点
+        </el-button>
       </div>
     </div>
 
     <!-- 图谱可视化区域 -->
     <div class="graph-container">
+      <!-- 搜索和筛选工具栏 -->
+      <div class="graph-filter-bar">
+        <div class="filter-controls">
+          <el-input
+            v-model="searchKeyword"
+            placeholder="搜索节点（如：松材线虫病）"
+            clearable
+            class="search-input"
+            @input="handleFilterChange"
+            @clear="handleFilterChange"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          
+          <el-select
+            v-model="filterSteps"
+            placeholder="选择步数"
+            class="steps-select"
+            @change="handleFilterChange"
+          >
+            <el-option label="无" value="none" />
+            <el-option label="1步" :value="1" />
+            <el-option label="2步" :value="2" />
+            <el-option label="3步" :value="3" />
+            <el-option label="4步" :value="4" />
+            <el-option label="5步" :value="5" />
+          </el-select>
+          
+          <el-button
+            v-if="searchKeyword || filterSteps !== 'none'"
+            type="info"
+            plain
+            @click="clearFilter"
+          >
+            清除筛选
+          </el-button>
+        </div>
+        
+        <div v-if="searchKeyword && filterSteps !== 'none'" class="filter-info">
+          <el-tag type="info" size="small">
+            显示以 "<strong>{{ searchKeyword }}</strong>" 为核心，向外 <strong>{{ filterSteps }}</strong> 步的子图
+          </el-tag>
+          <el-tag type="success" size="small" style="margin-left: 8px;">
+            节点: {{ filteredGraphData.nodes.length }} / {{ graphData.nodes.length }}
+          </el-tag>
+        </div>
+      </div>
+      
       <KnowledgeGraph
         v-if="!loading"
-        :nodes="graphData.nodes"
-        :links="graphData.links"
+        :nodes="filteredGraphData.nodes"
+        :links="filteredGraphData.links"
         @node-click="handleNodeClick"
         @edge-click="handleEdgeClick"
       />
@@ -219,12 +277,80 @@
         <el-form-item label="节点名称">
           <el-input v-model="nodeForm.name" placeholder="请输入节点名称" />
         </el-form-item>
+        <el-form-item label="高级节点">
+          <el-tag v-if="isHighLevelNode" type="warning" size="large">
+            <el-icon><StarFilled /></el-icon>
+            是高级节点
+          </el-tag>
+          <el-tag v-else type="info" size="large">
+            普通节点
+          </el-tag>
+          <div style="margin-top: 10px;">
+            <el-button 
+              v-if="!isHighLevelNode" 
+              type="success" 
+              size="small"
+              @click="handleAddHighLevelNodeFromDialog"
+            >
+              标记为高级节点
+            </el-button>
+            <el-button 
+              v-else 
+              type="warning" 
+              size="small"
+              @click="handleRemoveHighLevelNodeFromDialog"
+            >
+              取消高级节点标记
+            </el-button>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="nodeDialogVisible = false">取消</el-button>
           <el-button type="danger" @click="handleDeleteNode">删除节点</el-button>
           <el-button type="primary" @click="handleUpdateNode">保存修改</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 添加高级节点对话框 -->
+    <el-dialog
+      v-model="addHighLevelNodeDialogVisible"
+      title="添加高级节点"
+      width="500px"
+    >
+      <el-form :model="highLevelNodeForm" label-width="100px">
+        <el-form-item label="节点名称">
+          <el-input 
+            v-model="highLevelNodeForm.nodeName" 
+            placeholder="请输入要标记为高级节点的节点名称"
+            @keyup.enter="handleAddHighLevelNode"
+          />
+        </el-form-item>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-top: 10px;"
+        >
+          <template #title>
+            <div style="font-size: 13px;">
+              提示：只能添加知识图谱中已存在的节点。高级节点会在图谱中以橙色显示。
+            </div>
+          </template>
+        </el-alert>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="addHighLevelNodeDialogVisible = false">取消</el-button>
+          <el-button 
+            type="primary" 
+            @click="handleAddHighLevelNode"
+            :loading="addingHighLevelNode"
+          >
+            确定添加
+          </el-button>
         </span>
       </template>
     </el-dialog>
@@ -265,9 +391,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Loading, Search, Connection, Back, Check, Histogram, Camera, InfoFilled } from '@element-plus/icons-vue'
+import { Plus, Refresh, Loading, Search, Connection, Back, Check, Histogram, Camera, InfoFilled, StarFilled } from '@element-plus/icons-vue'
 import KnowledgeGraph from '@/components/KnowledgeGraph.vue'
 import api from '@/api'
 
@@ -275,8 +401,24 @@ import api from '@/api'
 const loading = ref(false)
 const adding = ref(false)
 const graphData = ref({ nodes: [], links: [] })
+const filteredGraphData = ref({ nodes: [], links: [] })
 const relations = ref([])
 const newEntityName = ref('')
+
+// 添加高级节点
+const addHighLevelNodeDialogVisible = ref(false)
+const addingHighLevelNode = ref(false)
+const highLevelNodeForm = ref({ nodeName: '' })
+
+// 计算当前选中的节点是否是高级节点
+const isHighLevelNode = computed(() => {
+  if (!selectedNode.value) return false
+  return graphData.value.nodes.find(n => n.name === selectedNode.value.name)?.category === 1
+})
+
+// 搜索和筛选
+const searchKeyword = ref('')
+const filterSteps = ref('none')
 
 // 节点编辑
 const nodeDialogVisible = ref(false)
@@ -299,12 +441,126 @@ const loadGraph = async () => {
   try {
     const data = await api.getGraph()
     graphData.value = data
+    applyFilter() // 应用当前筛选条件
     ElMessage.success('图谱加载成功')
   } catch (error) {
     ElMessage.error(`加载失败: ${error.message}`)
   } finally {
     loading.value = false
   }
+}
+
+// 子图过滤：使用BFS算法找到k步内的所有节点和边
+const filterSubgraph = (nodes, links, centerNodeName, maxSteps) => {
+  if (!centerNodeName || maxSteps === 'none' || maxSteps === null || maxSteps === undefined) {
+    return { nodes, links }
+  }
+  
+  // 找到中心节点（支持精确匹配和模糊匹配）
+  let centerNode = nodes.find(n => n.name === centerNodeName)
+  
+  // 如果精确匹配失败，尝试模糊匹配
+  if (!centerNode) {
+    const matchedNodes = nodes.filter(n => n.name.includes(centerNodeName))
+    if (matchedNodes.length === 1) {
+      centerNode = matchedNodes[0]
+    } else if (matchedNodes.length > 1) {
+      // 多个匹配，选择第一个
+      centerNode = matchedNodes[0]
+    }
+  }
+  
+  if (!centerNode) {
+    return { nodes: [], links: [] }
+  }
+  
+  // 构建邻接表（双向）
+  const adjacencyList = new Map()
+  nodes.forEach(node => {
+    adjacencyList.set(node.name, [])
+  })
+  
+  links.forEach(link => {
+    const source = link.source
+    const target = link.target
+    if (adjacencyList.has(source)) {
+      adjacencyList.get(source).push(target)
+    }
+    if (adjacencyList.has(target)) {
+      adjacencyList.get(target).push(source)
+    }
+  })
+  
+  // BFS遍历，找到k步内的所有节点
+  const visitedNodes = new Set()
+  const queue = [{ node: centerNodeName, step: 0 }]
+  visitedNodes.add(centerNodeName)
+  
+  while (queue.length > 0) {
+    const { node: currentNode, step } = queue.shift()
+    
+    // 如果当前步数小于maxSteps，继续遍历邻居
+    if (step < maxSteps) {
+      const neighbors = adjacencyList.get(currentNode) || []
+      for (const neighbor of neighbors) {
+        if (!visitedNodes.has(neighbor)) {
+          visitedNodes.add(neighbor)
+          queue.push({ node: neighbor, step: step + 1 })
+        }
+      }
+    }
+    // 如果step >= maxSteps，不再继续遍历，但当前节点已经包含在visitedNodes中
+  }
+  
+  // 过滤节点：只保留访问到的节点
+  const filteredNodes = nodes.filter(node => visitedNodes.has(node.name))
+  const filteredNodeNames = new Set(filteredNodes.map(n => n.name))
+  
+  // 过滤边：只保留两个端点都在过滤后节点集合中的边
+  const filteredLinks = links.filter(link => 
+    filteredNodeNames.has(link.source) && filteredNodeNames.has(link.target)
+  )
+  
+  return {
+    nodes: filteredNodes,
+    links: filteredLinks
+  }
+}
+
+// 应用筛选条件
+const applyFilter = () => {
+  if (!searchKeyword.value.trim() || filterSteps.value === 'none') {
+    // 没有筛选条件，显示全部
+    filteredGraphData.value = {
+      nodes: [...graphData.value.nodes],
+      links: [...graphData.value.links]
+    }
+  } else {
+    // 应用子图过滤
+    const result = filterSubgraph(
+      graphData.value.nodes,
+      graphData.value.links,
+      searchKeyword.value.trim(),
+      filterSteps.value
+    )
+    filteredGraphData.value = result
+    
+    if (result.nodes.length === 0) {
+      ElMessage.warning(`未找到节点 "${searchKeyword.value}"`)
+    }
+  }
+}
+
+// 处理筛选条件变化
+const handleFilterChange = () => {
+  applyFilter()
+}
+
+// 清除筛选
+const clearFilter = () => {
+  searchKeyword.value = ''
+  filterSteps.value = 'none'
+  applyFilter()
 }
 
 // 加载有效关系列表
@@ -453,6 +709,42 @@ const handleNodeClick = (node) => {
   nodeDialogVisible.value = true
 }
 
+// 从节点编辑对话框添加高级节点
+const handleAddHighLevelNodeFromDialog = async () => {
+  if (!selectedNode.value) return
+  
+  try {
+    await api.addHighLevelNode(selectedNode.value.name)
+    ElMessage.success(`成功将节点 "${selectedNode.value.name}" 标记为高级节点`)
+    await loadGraph()
+    // 更新选中节点信息
+    const updatedNode = graphData.value.nodes.find(n => n.name === selectedNode.value.name)
+    if (updatedNode) {
+      selectedNode.value = updatedNode
+    }
+  } catch (error) {
+    ElMessage.error(`添加高级节点失败: ${error.message}`)
+  }
+}
+
+// 从节点编辑对话框移除高级节点标记
+const handleRemoveHighLevelNodeFromDialog = async () => {
+  if (!selectedNode.value) return
+  
+  try {
+    await api.removeHighLevelNode(selectedNode.value.name)
+    ElMessage.success(`成功移除节点 "${selectedNode.value.name}" 的高级节点标记`)
+    await loadGraph()
+    // 更新选中节点信息
+    const updatedNode = graphData.value.nodes.find(n => n.name === selectedNode.value.name)
+    if (updatedNode) {
+      selectedNode.value = updatedNode
+    }
+  } catch (error) {
+    ElMessage.error(`移除高级节点标记失败: ${error.message}`)
+  }
+}
+
 // 处理边点击
 const handleEdgeClick = (edge) => {
   selectedEdge.value = edge
@@ -553,6 +845,34 @@ const handleUpdateEdge = async () => {
   }
 }
 
+// 显示添加高级节点对话框
+const showAddHighLevelNodeDialog = () => {
+  highLevelNodeForm.value.nodeName = ''
+  addHighLevelNodeDialogVisible.value = true
+}
+
+// 添加高级节点
+const handleAddHighLevelNode = async () => {
+  if (!highLevelNodeForm.value.nodeName.trim()) {
+    ElMessage.warning('请输入节点名称')
+    return
+  }
+  
+  addingHighLevelNode.value = true
+  try {
+    await api.addHighLevelNode(highLevelNodeForm.value.nodeName.trim())
+    ElMessage.success(`成功将节点 "${highLevelNodeForm.value.nodeName}" 标记为高级节点`)
+    addHighLevelNodeDialogVisible.value = false
+    highLevelNodeForm.value.nodeName = ''
+    // 重新加载图谱以应用新的高级节点
+    await loadGraph()
+  } catch (error) {
+    ElMessage.error(`添加高级节点失败: ${error.message}`)
+  } finally {
+    addingHighLevelNode.value = false
+  }
+}
+
 // 组件挂载时加载数据
 onMounted(() => {
   loadGraph()
@@ -636,6 +956,46 @@ onMounted(() => {
   margin: 20px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.graph-filter-bar {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+}
+
+.filter-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 250px;
+  max-width: 400px;
+}
+
+.steps-select {
+  width: 120px;
+}
+
+.filter-info {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-info strong {
+  color: #409eff;
+  font-weight: 600;
 }
 
 .loading-container {

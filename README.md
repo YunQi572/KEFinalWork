@@ -28,7 +28,7 @@
 
 ### 1. 环境要求
 
-- Python 3.8+
+- Python 3.9+
 - Node.js 14+
 - npm 或 yarn
 - **MySQL 8.0+** (已安装并运行)
@@ -37,7 +37,7 @@
 
 **当前配置**:
 - 主机: localhost:3306
-- 数据库: kproject
+- 数据库: kproject（使用时可以改成你自己的，下面同理）
 - 用户: root
 - 密码: xyd123456
 

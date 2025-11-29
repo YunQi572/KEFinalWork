@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class Word2VecService:
     """Word2Vec服务"""
-    
+
     def __init__(self, model_path: Optional[str] = None):
         """
         初始化Word2Vec模型
@@ -21,7 +21,7 @@ class Word2VecService:
         """
         self.model = None
         self.model_path = model_path
-        
+
         if model_path and os.path.exists(model_path):
             try:
                 from gensim.models import KeyedVectors
@@ -33,7 +33,7 @@ class Word2VecService:
                 self.model = None
         else:
             logger.warning("未提供Word2Vec模型路径或文件不存在，将使用Mock模式")
-    
+
     def find_most_similar(self, word: str, topn: int = 1) -> Optional[str]:
         """
         找到与给定词最相似的词
@@ -57,10 +57,10 @@ class Word2VecService:
                 logger.warning(f"词 '{word}' 不在Word2Vec模型词汇表中")
             except Exception as e:
                 logger.error(f"Word2Vec查询失败: {e}")
-        
+
         # Mock模式：返回一个预设的相似词
         return self._mock_similar_word(word)
-    
+
     def find_most_similar_topn(self, word: str, topn: int = 10) -> List[tuple]:
         """
         找到与给定词最相似的Top-N个词
@@ -81,10 +81,10 @@ class Word2VecService:
                 logger.warning(f"词 '{word}' 不在Word2Vec模型词汇表中")
             except Exception as e:
                 logger.error(f"Word2Vec查询失败: {e}")
-        
+
         # Mock模式：返回预设的相似词列表
         return self._mock_similar_words_topn(word, topn)
-    
+
     def _mock_similar_word(self, word: str) -> str:
         """
         Mock函数：模拟返回相似词
@@ -116,11 +116,11 @@ class Word2VecService:
             "林区": "松林",
             "山区": "松林",
         }
-        
+
         similar = mock_mappings.get(word, "松树")  # 默认返回"松树"
         logger.info(f"Mock模式: {word} -> {similar}")
         return similar
-    
+
     def _mock_similar_words_topn(self, word: str, topn: int = 10) -> List[tuple]:
         """
         Mock函数：模拟返回Top-N相似词
@@ -149,20 +149,20 @@ class Word2VecService:
                 ("环境条件", 0.63), ("气候条件", 0.60)
             ],
         }
-        
+
         # 如果word在预设组中，返回对应的相似词
         if word in mock_similar_groups:
             result = mock_similar_groups[word][:topn]
             logger.info(f"Mock模式: {word} -> {len(result)}个相似词")
             return result
-        
+
         # 默认返回一组通用的松材线虫病相关词
         default_similar = [
             ("松树", 0.75), ("马尾松", 0.72), ("松材线虫", 0.70), ("松墨天牛", 0.67),
             ("感染", 0.64), ("传播", 0.61), ("防治", 0.58), ("病害", 0.55),
             ("林木", 0.52), ("疫情", 0.50)
         ]
-        
+
         result = default_similar[:topn]
         logger.info(f"Mock模式(默认): {word} -> {len(result)}个相似词")
         return result
@@ -170,7 +170,7 @@ class Word2VecService:
 
 class KimiService:
     """Kimi (Moonshot AI) API服务"""
-    
+
     def __init__(self, api_key: Optional[str] = None):
         """
         初始化Kimi API客户端
@@ -180,7 +180,7 @@ class KimiService:
         """
         self.api_key = api_key or os.getenv("MOONSHOT_API_KEY", "")
         self.model = "moonshot-v1-8k"  # 默认模型
-        
+
         if not self.api_key:
             logger.warning("未设置MOONSHOT_API_KEY，Kimi API将无法使用")
             self.client = None
@@ -196,7 +196,7 @@ class KimiService:
                 logger.error(f"Kimi API客户端初始化失败: {e}")
                 logger.warning("将使用Mock模式进行关系推理")
                 self.client = None
-    
+
     def infer_relation(self, entity_a: str, entity_c: str, valid_relations: List[str]) -> str:
         """
         使用Kimi API推理两个实体之间的关系
@@ -212,7 +212,7 @@ class KimiService:
         if not self.client or not valid_relations:
             # 如果API不可用或没有有效关系，使用Mock模式
             return self._mock_relation(entity_a, entity_c, valid_relations)
-        
+
         try:
             # 构建prompt
             relations_str = "、".join(valid_relations)
@@ -227,9 +227,9 @@ class KimiService:
 3. 如果多个关系都合理，选择最直接、最重要的那个
 
 关系名称："""
-            
+
             logger.info(f"正在调用Kimi API推理关系: {entity_a} <-> {entity_c}")
-            
+
             # 调用Kimi API
             response = self.client.chat.completions.create(
                 model="moonshot-v1-8k",
@@ -246,10 +246,10 @@ class KimiService:
                 temperature=0.3,
                 max_tokens=50
             )
-            
+
             # 提取关系
             relation = response.choices[0].message.content.strip()
-            
+
             # 验证关系是否在有效列表中
             if relation in valid_relations:
                 logger.info(f"Kimi API推理成功: {entity_a} --[{relation}]--> {entity_c}")
@@ -257,11 +257,11 @@ class KimiService:
             else:
                 logger.warning(f"Kimi返回的关系 '{relation}' 不在有效列表中，使用Mock模式")
                 return self._mock_relation(entity_a, entity_c, valid_relations)
-                
+
         except Exception as e:
             logger.error(f"Kimi API调用失败: {e}")
             return self._mock_relation(entity_a, entity_c, valid_relations)
-    
+
     def _mock_relation(self, entity_a: str, entity_c: str, valid_relations: List[str]) -> str:
         """
         Mock函数：基于规则推理关系
@@ -269,14 +269,14 @@ class KimiService:
         """
         if not valid_relations:
             return "相关"
-        
+
         # 预设一些规则
         # 如果entity_a是树种，entity_c是松树/马尾松等，关系可能是"属于"
         tree_keywords = ["松", "树", "林"]
         insect_keywords = ["天牛", "昆虫", "媒介"]
         disease_keywords = ["线虫", "病", "症状"]
         env_keywords = ["温度", "湿度", "气候", "环境"]
-        
+
         # 简单的规则匹配
         if any(k in entity_a for k in tree_keywords):
             if "易感" in valid_relations and any(k in entity_c for k in disease_keywords):
@@ -298,7 +298,7 @@ class KimiService:
         else:
             # 默认使用第一个关系
             relation = valid_relations[0]
-        
+
         logger.info(f"Mock推理: {entity_a} --[{relation}]--> {entity_c}")
         return relation
 
@@ -311,16 +311,16 @@ kimi_service = None
 def init_ai_services(word2vec_model_path: Optional[str] = None, kimi_api_key: Optional[str] = None):
     """
     初始化AI服务
-    
+
     Args:
         word2vec_model_path: Word2Vec模型路径
         kimi_api_key: Kimi API密钥
     """
     global word2vec_service, kimi_service
-    
+
     word2vec_service = Word2VecService(word2vec_model_path)
     kimi_service = KimiService(kimi_api_key)
-    
+
     logger.info("AI服务初始化完成")
 
 

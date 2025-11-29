@@ -7,11 +7,9 @@ numpy>=1.24.0,<2.0.0
 scipy>=1.11.0,<1.13.0
 python-dotenv>=1.0.0
 pymysql>=1.1.0
-# 图像识别相关依赖
 pillow>=10.0.0
 python-multipart>=0.0.6
-# 可选：如果使用OpenCV进行图像预处理
 opencv-python>=4.8.0
-# 如果使用百度AI/腾讯AI等，根据需要添加对应SDK
-# baidu-aip>=4.16.0
-# tencentcloud-sdk-python>=3.0.0
+pdfplumber>=0.10.0
+jieba>=0.42.1
+
