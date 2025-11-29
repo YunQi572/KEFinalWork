@@ -1,53 +1,77 @@
 <template>
   <div class="image-analysis-view">
-    <div class="page-header">
-      <h2>
-        <el-icon><Camera /></el-icon>
-        图像分析与预测
-      </h2>
-      <p>基于AI的松材线虫病图像识别和智能诊断系统</p>
-    </div>
-
-    <div class="content-container">
-      <ImageAnalysis />
-    </div>
-
-    <!-- 快速导航 -->
-    <div class="quick-navigation">
-      <el-card class="nav-card">
-        <template #header>
-          <div class="nav-header">
-            <el-icon><Guide /></el-icon>
-            快速导航
+    <div class="main-layout">
+      <!-- 左侧主要内容区域 -->
+      <div class="left-column">
+        <div class="page-header">
+          <div class="header-content">
+            <h2>
+              <el-icon class="header-icon"><Camera /></el-icon>
+              图像分析与预测
+            </h2>
+            <p class="subtitle">基于AI的松材线虫病图像识别和智能诊断系统</p>
           </div>
-        </template>
-        
-        <div class="nav-buttons">
-          <router-link to="/" class="nav-link">
-            <el-button type="primary" plain>
-              <el-icon><Histogram /></el-icon>
-              知识图谱
-            </el-button>
-          </router-link>
-          
-          <router-link to="/about" class="nav-link">
-            <el-button type="info" plain>
-              <el-icon><InfoFilled /></el-icon>
-              关于系统
-            </el-button>
-          </router-link>
-          
-          <el-button type="success" plain @click="showHistory">
-            <el-icon><Clock /></el-icon>
-            分析历史
-          </el-button>
-          
-          <el-button type="warning" plain @click="showHelp">
-            <el-icon><QuestionFilled /></el-icon>
-            使用帮助
-          </el-button>
         </div>
-      </el-card>
+
+        <div class="analysis-card">
+          <ImageAnalysis />
+        </div>
+      </div>
+
+      <!-- 右侧侧边栏区域 -->
+      <div class="right-column">
+        <!-- 快速导航卡片 -->
+        <div class="sidebar-card nav-card">
+          <div class="card-header">
+            <el-icon><Guide /></el-icon>
+            <span>快速导航</span>
+          </div>
+          
+          <div class="nav-actions">
+            <router-link to="/" class="nav-link">
+              <div class="nav-item primary">
+                <div class="nav-item-left">
+                  <el-icon><Histogram /></el-icon>
+                  <span>知识图谱</span>
+                </div>
+                <el-icon class="arrow"><ArrowRight /></el-icon>
+              </div>
+            </router-link>
+            
+            <div class="nav-item success" @click="showHistory">
+              <div class="nav-item-left">
+                <el-icon><Clock /></el-icon>
+                <span>分析历史</span>
+              </div>
+              <el-icon class="arrow"><ArrowRight /></el-icon>
+            </div>
+            
+            <div class="nav-item warning" @click="showHelp">
+              <div class="nav-item-left">
+                <el-icon><QuestionFilled /></el-icon>
+                <span>使用帮助</span>
+              </div>
+              <el-icon class="arrow"><ArrowRight /></el-icon>
+            </div>
+          </div>
+        </div>
+
+        <!-- 系统说明卡片 -->
+        <div class="sidebar-card info-card">
+          <div class="card-header">
+            <el-icon><InfoFilled /></el-icon>
+            <span>系统说明</span>
+          </div>
+          <div class="info-content">
+            <p>本系统支持识别松树、昆虫及病害症状。上传图片后，系统将自动分析实体关系并预测疾病风险。</p>
+            <div class="tags-preview">
+              <el-tag size="small" effect="plain">多实体识别</el-tag>
+              <el-tag size="small" effect="plain" type="success">关系推理</el-tag>
+              <el-tag size="small" effect="plain" type="warning">风险预测</el-tag>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 分析历史对话框 -->
@@ -55,6 +79,7 @@
       v-model="historyDialogVisible"
       title="分析历史"
       width="800px"
+      destroy-on-close
     >
       <div v-if="historyLoading" class="loading-container">
         <el-icon class="is-loading" :size="40">
@@ -71,22 +96,22 @@
             class="history-item"
           >
             <div class="history-header">
-              <span class="history-id">#{{ record.id }}</span>
-              <span class="history-time">{{ record.timestamp }}</span>
+              <span class="history-id">#{{ record.id || 'N/A' }}</span>
+              <span class="history-time">{{ record.timestamp || '未知时间' }}</span>
               <el-tag :type="getRiskTagType(record.risk_level)">
-                {{ record.risk_level }}
+                {{ record.risk_level || '未知' }}
               </el-tag>
             </div>
             <div class="history-details">
               <div class="detail-item">
                 <span class="label">检测实体:</span>
-                <span class="value">{{ record.entity_count }} 个</span>
+                <span class="value">{{ record.entity_count || 0 }} 个</span>
               </div>
               <div class="detail-item">
                 <span class="label">实体类型:</span>
                 <div class="entity-types">
                   <el-tag
-                    v-for="type in record.detected_types"
+                    v-for="type in (record.detected_types || [])"
                     :key="type"
                     size="small"
                     :type="getEntityTypeTag(type)"
@@ -98,11 +123,12 @@
               <div class="detail-item">
                 <span class="label">整体置信度:</span>
                 <el-progress
-                  :percentage="record.confidence * 100"
-                  :color="getConfidenceColor(record.confidence)"
+                  :percentage="(record.confidence || 0) * 100"
+                  :color="getConfidenceColor(record.confidence || 0)"
                   :show-text="false"
+                  style="width: 100px"
                 />
-                <span class="confidence-text">{{ (record.confidence * 100).toFixed(1) }}%</span>
+                <span class="confidence-text">{{ ((record.confidence || 0) * 100).toFixed(1) }}%</span>
               </div>
             </div>
           </div>
@@ -190,10 +216,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Camera, Guide, Histogram, InfoFilled, Clock, QuestionFilled, Loading
+  Camera, Guide, Histogram, InfoFilled, Clock, QuestionFilled, Loading, ArrowRight
 } from '@element-plus/icons-vue'
 import ImageAnalysis from '@/components/ImageAnalysis.vue'
 import api from '@/api'
@@ -212,7 +238,12 @@ const showHistory = async () => {
   
   try {
     const result = await api.getAnalysisHistory(10)
-    analysisHistory.value = result.history || []
+    // 确保数据格式正确并按时间排序
+    const history = result.history || []
+    analysisHistory.value = history.sort((a, b) => {
+      // 按时间倒序排列
+      return new Date(b.timestamp) - new Date(a.timestamp)
+    })
   } catch (error) {
     ElMessage.error(`加载历史失败: ${error.message}`)
     analysisHistory.value = []
@@ -267,79 +298,179 @@ const getConfidenceColor = (confidence) => {
 .image-analysis-view {
   min-height: 100vh;
   background: #f5f7fa;
-  padding: 20px;
+  padding: 24px;
+}
+
+.main-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* 左侧区域 */
+.left-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .page-header {
-  text-align: center;
-  margin-bottom: 30px;
-  padding: 30px 20px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(135deg, #fff 0%, #f0f9ff 100%);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.header-content {
+  text-align: left;
 }
 
 .page-header h2 {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 12px;
-  margin-bottom: 10px;
-  color: #303133;
-  font-size: 32px;
+  margin: 0 0 8px 0;
+  color: #1a1a1a;
+  font-size: 28px;
+  font-weight: 700;
 }
 
-.page-header p {
+.header-icon {
+  color: #409eff;
+}
+
+.subtitle {
   color: #606266;
   font-size: 16px;
   margin: 0;
+  opacity: 0.8;
 }
 
-.content-container {
+.analysis-card {
   background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  margin-bottom: 30px;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  padding: 24px;
+  min-height: 600px;
+}
+
+/* 右侧侧边栏 */
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.sidebar-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
   padding: 20px;
-}
-
-.quick-navigation {
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.nav-card {
-  border-radius: 12px;
   overflow: hidden;
 }
 
-.nav-header {
+.card-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-size: 18px;
   font-weight: 600;
   color: #303133;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f2f5;
 }
 
-.nav-buttons {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  padding: 10px 0;
+/* 导航按钮样式 */
+.nav-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .nav-link {
   text-decoration: none;
+  display: block;
 }
 
-.nav-buttons .el-button {
-  width: 100%;
-  height: 44px;
-  border-radius: 8px;
-  font-size: 14px;
+.nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+}
+
+.nav-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-weight: 500;
 }
 
+.nav-item .arrow {
+  opacity: 0;
+  transform: translateX(-10px);
+  transition: all 0.3s ease;
+}
+
+.nav-item:hover .arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* 导航项颜色变体 */
+.nav-item.primary {
+  background: #ecf5ff;
+  color: #409eff;
+}
+.nav-item.primary:hover {
+  background: #409eff;
+  color: white;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+}
+
+.nav-item.success {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+.nav-item.success:hover {
+  background: #67c23a;
+  color: white;
+  box-shadow: 0 4px 12px rgba(103, 194, 58, 0.3);
+}
+
+.nav-item.warning {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+.nav-item.warning:hover {
+  background: #e6a23c;
+  color: white;
+  box-shadow: 0 4px 12px rgba(230, 162, 60, 0.3);
+}
+
+/* 信息卡片 */
+.info-content p {
+  color: #606266;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0 0 16px 0;
+}
+
+.tags-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 历史记录列表样式 (保持原有) */
 .loading-container {
   display: flex;
   flex-direction: column;
@@ -432,6 +563,7 @@ const getConfidenceColor = (confidence) => {
   font-size: 12px;
 }
 
+/* 帮助内容样式 (保持原有) */
 .help-content {
   max-height: 600px;
   overflow-y: auto;
@@ -460,25 +592,42 @@ const getConfidenceColor = (confidence) => {
   font-weight: 600;
 }
 
-@media (max-width: 768px) {
-  .image-analysis-view {
-    padding: 10px;
-  }
-  
-  .page-header {
-    padding: 20px 10px;
-  }
-  
-  .page-header h2 {
-    font-size: 24px;
-  }
-  
-  .nav-buttons {
+/* 响应式适配 */
+@media (max-width: 1024px) {
+  .main-layout {
     grid-template-columns: 1fr;
   }
   
-  .content-container {
-    padding: 10px;
+  .right-column {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .sidebar-card {
+    flex: 1;
+    min-width: 300px;
+  }
+}
+
+@media (max-width: 768px) {
+  .image-analysis-view {
+    padding: 12px;
+  }
+  
+  .page-header {
+    padding: 20px;
+  }
+  
+  .page-header h2 {
+    font-size: 22px;
+  }
+  
+  .right-column {
+    flex-direction: column;
+  }
+  
+  .nav-item {
+    padding: 12px;
   }
 }
 </style>
