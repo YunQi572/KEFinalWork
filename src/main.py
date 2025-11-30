@@ -45,7 +45,7 @@ DB_CONFIG = {
     'port': 3306,
     'user': 'root',
     'password': '<your-databease-password>',
-    'database': '<your-database-name>'
+    'database': '<your-database-name>',
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
 }
