@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import time
 import uvicorn
+import json
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -43,8 +44,8 @@ DB_CONFIG = {
     'host': 'localhost',
     'port': 3306,
     'user': 'root',
-    'password': 'xyd123456',
-    'database': 'kb',
+    'password': '<your-databease-password>',
+    'database': '<your-database-name>'
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
 }
@@ -187,6 +188,22 @@ def init_database():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 INDEX idx_node_name (node_name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+        
+        # 创建图像分析历史表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS image_analysis_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                analysis_id VARCHAR(100) NOT NULL UNIQUE,
+                timestamp DATETIME NOT NULL,
+                entity_count INT NOT NULL,
+                detected_types JSON NOT NULL,
+                confidence FLOAT NOT NULL,
+                risk_level VARCHAR(20) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_timestamp (timestamp),
+                INDEX idx_analysis_id (analysis_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
         
@@ -941,6 +958,44 @@ async def analyze_image(
         if not response_data["recommendations"]:
             response_data["recommendations"] = ["未发现明显的松材线虫病风险，建议继续监测"]
         
+        # 记录分析结果到历史表
+        try:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                
+                # 准备历史记录数据
+                analysis_id = response_data["analysis_id"]
+                timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+                entity_count = len(detected_entities)
+                
+                # 获取检测到的实体类型
+                detected_types = list(set(entity["type"] for entity in detected_entities))
+                
+                # 计算平均置信度
+                avg_confidence = sum(entity["confidence"] for entity in detected_entities) / len(detected_entities) if detected_entities else 0
+                # 保留一位小数
+                avg_confidence = round(avg_confidence, 1)
+                
+                # 确定风险等级
+                if avg_confidence >= 0.8:
+                    risk_level = "高风险"
+                elif avg_confidence >= 0.6:
+                    risk_level = "中风险"
+                else:
+                    risk_level = "低风险"
+                
+                # 插入历史记录
+                cursor.execute("""
+                    INSERT INTO image_analysis_history 
+                    (analysis_id, timestamp, entity_count, detected_types, confidence, risk_level)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (analysis_id, timestamp, entity_count, json.dumps(detected_types), avg_confidence, risk_level))
+                
+                conn.commit()
+                logger.info(f"分析历史记录已保存: {analysis_id}")
+        except Exception as e:
+            logger.error(f"保存分析历史记录失败: {e}")
+        
         # 记录分析结果
         entity_names = [entity["name"] for entity in detected_entities]
         logger.info(f"图像分析完成: 检测{len(detected_entities)}个实体 {entity_names}")
@@ -1196,7 +1251,7 @@ async def remove_high_level_node(
 @app.get("/api/image/analysis-history")
 async def get_analysis_history(limit: int = 10):
     """
-    获取图像分析历史（模拟实现）
+    获取图像分析历史
     
     Args:
         limit: 返回记录数量限制
@@ -1204,25 +1259,59 @@ async def get_analysis_history(limit: int = 10):
     Returns:
         分析历史列表
     """
-    # 这是一个模拟实现，实际中应该从数据库中查询
-    # 可以创建一个表来存储分析历史
-    mock_history = [
-        {
-            "id": f"analysis_{i}",
-            "timestamp": "2024-01-20 10:30:00",
-            "entity_count": 3,
-            "detected_types": ["insect", "tree", "disease_symptom"],
-            "confidence": 0.8,
-            "risk_level": "中风险" if i % 2 == 0 else "高风险"
-        }
-        for i in range(min(limit, 5))
-    ]
-    
-    return {
-        "history": mock_history,
-        "total_count": len(mock_history)
-    }
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # 查询最新的分析历史记录
+            cursor.execute("""
+                SELECT 
+                    analysis_id as id,
+                    timestamp,
+                    entity_count,
+                    detected_types,
+                    confidence,
+                    risk_level
+                FROM image_analysis_history 
+                ORDER BY timestamp DESC 
+                LIMIT %s
+            """, (limit,))
+            
+            history_records = []
+            for record in cursor.fetchall():
+                # 解析JSON字段
+                detected_types = json.loads(record["detected_types"]) if isinstance(record["detected_types"], str) else record["detected_types"]
+                
+                history_records.append({
+                    "id": record["id"],
+                    "timestamp": record["timestamp"].strftime('%Y-%m-%d %H:%M:%S') if hasattr(record["timestamp"], 'strftime') else record["timestamp"],
+                    "entity_count": record["entity_count"],
+                    "detected_types": detected_types,
+                    "confidence": round(float(record["confidence"]), 1),
+                    "risk_level": record["risk_level"]
+                })
+            
+            return {
+                "history": history_records,
+                "total_count": len(history_records)
+            }
+            
+    except Exception as e:
+        logger.error(f"获取分析历史失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取分析历史失败: {str(e)}")
 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+
+
+
+
+
+
+
+
+

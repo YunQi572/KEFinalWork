@@ -284,7 +284,7 @@ class ImageAnalysisService:
                 entity_result = EntityRecognitionResult(
                     entity_type=matched_entity['type'],
                     entity_name=f"{matched_entity['name']} (AI识别: {ai_obj['name']})",
-                    confidence=ai_obj['confidence'] * matched_entity['similarity'],
+                    confidence=round(ai_obj['confidence'] * matched_entity['similarity'], 1),
                     features={
                         "ai_detected": ai_obj['name'],
                         "ai_confidence": ai_obj['confidence'],
@@ -306,7 +306,7 @@ class ImageAnalysisService:
                 entity_result = EntityRecognitionResult(
                     entity_type=ai_obj['category'],
                     entity_name=f"未知实体: {ai_obj['name']}",
-                    confidence=ai_obj['confidence'],
+                    confidence=round(ai_obj['confidence'], 1),
                     features={
                         "ai_detected": ai_obj['name'],
                         "ai_confidence": ai_obj['confidence'],
@@ -1247,7 +1247,7 @@ class KnowledgeInferenceService:
         # 如果找到相关疾病，增加置信度
         disease_bonus = 0.2 if disease_info.get("diseases") else 0.0
         
-        return min(avg_confidence + disease_bonus, 1.0)
+        return round(min(avg_confidence + disease_bonus, 1.0), 1)
     
     def _assess_risk_level(self, entities: List[Dict[str, Any]], disease_info: Dict[str, Any]) -> str:
         """评估风险等级"""
