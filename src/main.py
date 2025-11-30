@@ -43,8 +43,8 @@ DB_CONFIG = {
     'host': 'localhost',
     'port': 3306,
     'user': 'root',
-    'password': '123456',
-    'database': 'KEFinalWork',
+    'password': 'xyd123456',
+    'database': 'kb',
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
 }
@@ -581,53 +581,52 @@ async def get_similar_entities(entity_name: str, topn: int = 10):
             if cursor.fetchone()["cnt"] > 0:
                 raise HTTPException(status_code=400, detail=f"实体 '{entity_name}' 已存在于图谱中")
             
-            # 使用Word2Vec找更多相似词（获取更多候选）
+            # 从数据库获取所有已存在的实体
+            cursor.execute("""
+                SELECT DISTINCT head_entity as entity FROM knowledge_triples
+                UNION
+                SELECT DISTINCT tail_entity as entity FROM knowledge_triples
+            """)
+            
+            existing_entities = [row["entity"] for row in cursor.fetchall()]
+            
+            if not existing_entities:
+                raise HTTPException(status_code=404, detail="图谱中暂无实体，无法计算相似度")
+            
+            logger.info(f"从数据库获取了 {len(existing_entities)} 个已有实体")
+            
+            # 使用Word2Vec计算输入词与所有实体的相似度
             word2vec = get_word2vec_service()
-            similar_words = word2vec.find_most_similar_topn(entity_name, topn=topn * 3)  # 获取3倍数量
+            similar_words = word2vec.calculate_similarity_with_candidates(entity_name, existing_entities)
             
             if not similar_words:
-                raise HTTPException(status_code=404, detail="未找到相似实体")
+                raise HTTPException(status_code=404, detail="未能计算相似度")
             
-            # 分类：图谱内和图谱外
-            in_graph_entities = []
-            out_graph_entities = []
+            # 只取前topn个（已经按相似度排序）
+            similar_words = similar_words[:topn]
             
+            # 构建返回结果（这些都是图谱内的实体）
+            result = []
             for word, similarity in similar_words:
-                cursor.execute("""
-                    SELECT COUNT(*) as cnt FROM knowledge_triples 
-                    WHERE head_entity = %s OR tail_entity = %s
-                """, (word, word))
-                
-                in_graph = cursor.fetchone()["cnt"] > 0
-                
                 entity_data = {
                     "entity": word,
                     "similarity": float(similarity),
-                    "in_graph": in_graph
+                    "in_graph": True  # 都是从数据库查出来的，必然在图谱中
                 }
-                
-                if in_graph:
-                    in_graph_entities.append(entity_data)
-                else:
-                    out_graph_entities.append(entity_data)
-            
-            # 优先返回图谱内的实体，不足时补充图谱外的
-            result = in_graph_entities[:topn]
-            if len(result) < topn:
-                result.extend(out_graph_entities[:topn - len(result)])
+                result.append(entity_data)
             
             if not result:
                 raise HTTPException(status_code=404, detail="未找到相似实体")
             
-            logger.info(f"找到相似实体: 图谱内 {len(in_graph_entities)} 个, 图谱外 {len(out_graph_entities)} 个, 返回 {len(result)} 个")
+            logger.info(f"计算完成，返回 {len(result)} 个相似实体（相似度范围: {result[0]['similarity']:.4f} ~ {result[-1]['similarity']:.4f}）")
             
             return {
                 "input": entity_name,
                 "similar_entities": result,
                 "stats": {
-                    "in_graph_count": len(in_graph_entities),
-                    "out_graph_count": len(out_graph_entities),
-                    "total_returned": len(result)
+                    "total_entities_in_graph": len(existing_entities),
+                    "calculated_count": len(existing_entities),
+                    "returned_count": len(result)
                 }
             }
             

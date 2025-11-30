@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class Word2VecService:
-    """Word2Vec服务"""
+    """Word2Vec服务（支持多级备用模型）"""
 
     def __init__(self, model_path: Optional[str] = None):
         """
@@ -19,20 +19,29 @@ class Word2VecService:
         Args:
             model_path: Word2Vec模型文件路径（.bin或.model）
         """
-        self.model = None
+        self.model = None  # 自定义模型
+        self.fallback_model = None  # 备用通用模型
         self.model_path = model_path
+        self.kimi_client = None  # 用于在线词向量查询
 
+        # 加载自定义模型
         if model_path and os.path.exists(model_path):
             try:
                 from gensim.models import KeyedVectors
-                logger.info(f"正在加载Word2Vec模型: {model_path}")
+                logger.info(f"正在加载自定义Word2Vec模型: {model_path}")
                 self.model = KeyedVectors.load_word2vec_format(model_path, binary=True)
-                logger.info("Word2Vec模型加载成功")
+                logger.info(f"自定义模型加载成功，词汇量: {len(self.model.key_to_index)}")
             except Exception as e:
-                logger.warning(f"Word2Vec模型加载失败: {e}, 将使用Mock模式")
+                logger.warning(f"自定义模型加载失败: {e}")
                 self.model = None
         else:
-            logger.warning("未提供Word2Vec模型路径或文件不存在，将使用Mock模式")
+            logger.warning("未提供自定义模型路径或文件不存在")
+
+        # 尝试加载备用的通用中文Word2Vec模型
+        self._load_fallback_model()
+        
+        # 初始化Kimi客户端用于在线查询
+        self._init_kimi_client()
 
     def find_most_similar(self, word: str, topn: int = 1) -> Optional[str]:
         """
@@ -61,28 +70,169 @@ class Word2VecService:
         # Mock模式：返回一个预设的相似词
         return self._mock_similar_word(word)
 
+    def _load_fallback_model(self):
+        """加载备用的通用中文Word2Vec模型"""
+        fallback_path = os.getenv("FALLBACK_WORD2VEC_MODEL_PATH", "")
+        
+        if not fallback_path:
+            logger.info("未配置备用Word2Vec模型路径(FALLBACK_WORD2VEC_MODEL_PATH)")
+            self.fallback_model = None
+            return
+            
+        if not os.path.exists(fallback_path):
+            logger.warning(f"备用模型文件不存在: {fallback_path}")
+            self.fallback_model = None
+            return
+            
+        try:
+            from gensim.models import KeyedVectors
+            logger.info(f"正在加载备用Word2Vec模型: {fallback_path}")
+            
+            # 根据文件扩展名判断加载方式
+            if fallback_path.endswith('.bin'):
+                self.fallback_model = KeyedVectors.load_word2vec_format(fallback_path, binary=True)
+            elif fallback_path.endswith('.txt'):
+                self.fallback_model = KeyedVectors.load_word2vec_format(fallback_path, binary=False)
+            else:
+                # 尝试gensim原生格式
+                self.fallback_model = KeyedVectors.load(fallback_path)
+                
+            logger.info(f"✅ 备用模型加载成功，词汇量: {len(self.fallback_model.key_to_index)}")
+        except Exception as e:
+            logger.warning(f"备用模型加载失败: {e}")
+            self.fallback_model = None
+
+    def _init_kimi_client(self):
+        """初始化Kimi客户端（仅用于关系推理，不用于相似词查询）"""
+        # Kimi客户端只在KimiService中使用，这里不需要初始化
+        self.kimi_client = None
+
+    def calculate_similarity_with_candidates(self, word: str, candidate_words: List[str]) -> List[tuple]:
+        """
+        计算输入词与候选词列表的相似度（从数据库获取的词语）
+        
+        策略：
+        1. 优先使用自定义模型计算
+        2. 自定义模型中没有则使用备用模型
+        3. 都没有则返回Mock数据
+        
+        Args:
+            word: 输入词
+            candidate_words: 候选词列表（从数据库获取的实体）
+            
+        Returns:
+            [(词, 相似度), ...] 列表，按相似度降序排列
+        """
+        if not candidate_words:
+            logger.warning("候选词列表为空")
+            return []
+        
+        results = []
+        
+        # 选择使用哪个模型
+        active_model = None
+        model_name = "Mock"
+        
+        # 策略1: 检查输入词是否在自定义模型中
+        if self.model is not None:
+            try:
+                if word in self.model.key_to_index:
+                    active_model = self.model
+                    model_name = "自定义模型"
+                    logger.info(f"✅ 使用自定义模型计算相似度")
+            except Exception as e:
+                logger.warning(f"检查自定义模型失败: {e}")
+        
+        # 策略2: 如果自定义模型中没有，尝试备用模型
+        if active_model is None and self.fallback_model is not None:
+            try:
+                if word in self.fallback_model.key_to_index:
+                    active_model = self.fallback_model
+                    model_name = "备用通用模型"
+                    logger.info(f"✅ 使用备用通用模型计算相似度")
+            except Exception as e:
+                logger.warning(f"检查备用模型失败: {e}")
+        
+        # 如果有可用模型，计算相似度
+        if active_model is not None:
+            for candidate in candidate_words:
+                try:
+                    # 检查候选词是否在模型中
+                    if candidate in active_model.key_to_index:
+                        similarity = active_model.similarity(word, candidate)
+                        results.append((candidate, float(similarity)))
+                    else:
+                        # 候选词不在模型中，给一个较低的相似度
+                        results.append((candidate, 0.1))
+                except Exception as e:
+                    logger.warning(f"计算 '{word}' 和 '{candidate}' 的相似度失败: {e}")
+                    results.append((candidate, 0.0))
+            
+            # 按相似度降序排序
+            results.sort(key=lambda x: x[1], reverse=True)
+            logger.info(f"使用{model_name}计算了 {len(results)} 个词的相似度")
+            
+        else:
+            # 策略3: 都没有，使用Mock模式
+            logger.warning(f"⚠️  词 '{word}' 不在任何模型中，使用Mock模式")
+            results = self._mock_similarity_with_candidates(word, candidate_words)
+        
+        return results
+    
+    def _mock_similarity_with_candidates(self, word: str, candidates: List[str]) -> List[tuple]:
+        """Mock模式：为候选词生成模拟相似度"""
+        import random
+        random.seed(hash(word) % 10000)  # 使用word作为种子，保证结果可重现
+        
+        results = [(c, random.uniform(0.3, 0.7)) for c in candidates]
+        results.sort(key=lambda x: x[1], reverse=True)
+        
+        logger.info(f"🔄 Mock模式生成了 {len(results)} 个词的相似度")
+        return results
+
     def find_most_similar_topn(self, word: str, topn: int = 10) -> List[tuple]:
         """
-        找到与给定词最相似的Top-N个词
+        找到与给定词最相似的Top-N个词（多级备用策略）
+        
+        ⚠️ 注意：这个方法直接从模型词汇表中查找
+        如果要从数据库已有实体中查找，请使用 calculate_similarity_with_candidates
+        
+        优先级：
+        1. 自定义Word2Vec模型（专业领域）
+        2. 备用通用Word2Vec模型（广泛覆盖）
+        3. Mock数据（兜底保障）
         
         Args:
             word: 输入词
             topn: 返回前N个相似词
             
         Returns:
-            [(词, 相似度), ...] 列表，如果找不到返回空列表
+            [(词, 相似度), ...] 列表
         """
+        # 策略1: 尝试自定义模型
         if self.model is not None:
             try:
                 similar_words = self.model.most_similar(word, topn=topn)
-                logger.info(f"Word2Vec找到{len(similar_words)}个相似词: {word}")
+                logger.info(f"✅ 自定义模型找到{len(similar_words)}个相似词: {word}")
                 return similar_words
             except KeyError:
-                logger.warning(f"词 '{word}' 不在Word2Vec模型词汇表中")
+                logger.warning(f"⚠️  词 '{word}' 不在自定义模型中，尝试备用通用模型...")
             except Exception as e:
-                logger.error(f"Word2Vec查询失败: {e}")
+                logger.error(f"自定义模型查询失败: {e}")
 
-        # Mock模式：返回预设的相似词列表
+        # 策略2: 尝试备用通用模型
+        if self.fallback_model is not None:
+            try:
+                similar_words = self.fallback_model.most_similar(word, topn=topn)
+                logger.info(f"✅ 备用通用模型找到{len(similar_words)}个相似词: {word}")
+                return similar_words
+            except KeyError:
+                logger.warning(f"⚠️  词 '{word}' 也不在备用模型中，使用Mock模式")
+            except Exception as e:
+                logger.error(f"备用模型查询失败: {e}")
+
+        # 策略3: 使用Mock数据
+        logger.info(f"🔄 使用Mock模式为 '{word}' 生成相似词")
         return self._mock_similar_words_topn(word, topn)
 
     def _mock_similar_word(self, word: str) -> str:
