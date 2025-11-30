@@ -9,6 +9,8 @@
 - 📊 **完整的增删改查** - 支持节点和边的全面管理
 - 🎨 **现代化UI** - 基于 Element Plus 的美观界面
 - 🔄 **实时交互** - 支持拖拽、缩放、点击查看详情
+- 📷 **图像分析与预测** - 基于AI的松材线虫病图像识别和智能诊断系统
+- 📚 **分析历史记录** - 自动保存和查询历史分析结果
 
 ## 📦 技术栈
 
@@ -118,6 +120,18 @@ npm run serve
   - 修改关系类型
   - 删除该关系
 
+### 图像分析功能
+
+1. 点击左侧导航栏的"图像分析与预测"选项
+2. 上传松材线虫病相关的图像文件
+3. 系统将自动:
+   - 识别图像中的实体(松树、昆虫、病害症状等)
+   - 分析实体间的关系
+   - 预测疾病风险等级
+   - 自动生成防治建议
+4. 分析结果会自动保存到知识图谱中
+5. 可以在"分析历史"中查看之前的分析记录
+
 ## 🔧 配置说明
 
 ### Kimi API 配置
@@ -171,6 +185,22 @@ CREATE TABLE valid_relations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
+### image_analysis_history 表
+```sql
+CREATE TABLE image_analysis_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    analysis_id VARCHAR(100) NOT NULL UNIQUE,  -- 分析ID
+    timestamp DATETIME NOT NULL,               -- 分析时间
+    entity_count INT NOT NULL,                 -- 检测到的实体数量
+    detected_types JSON NOT NULL,              -- 检测到的实体类型
+    confidence FLOAT NOT NULL,                 -- 平均置信度
+    risk_level VARCHAR(20) NOT NULL,           -- 风险等级
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_timestamp (timestamp),
+    INDEX idx_analysis_id (analysis_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
 ## 🔌 API 接口
 
 ### 获取完整图谱
@@ -212,6 +242,12 @@ Body: { "id": 1, "head_entity": "A", "relation": "关系", "tail_entity": "B" }
 GET /api/relations
 ```
 
+### 获取图像分析历史
+```
+GET /api/image/analysis-history
+Query: limit=10 (可选，默认10条)
+```
+
 ## 📁 项目结构
 
 ```
@@ -220,16 +256,21 @@ KEFinalWork/
 │   ├── main.py            # FastAPI 主应用
 │   ├── ai_service.py      # AI 服务(Word2Vec + Kimi)
 │   ├── db_manager.py      # 数据库管理器(原有)
+│   ├── image_service.py   # 图像分析服务
 │   ├── init_db.py         # 数据库初始化脚本
+│   ├── knowledge_updater.py # 知识图谱更新服务
+│   ├── multi_entity_analyzer.py # 多实体分析器
 │   ├── requirements.txt   # Python 依赖
 │   └── .env.example       # 环境变量示例
 ├── ui/                     # 前端代码
 │   ├── src/
 │   │   ├── api/           # API 接口封装
 │   │   ├── components/    # Vue 组件
-│   │   │   └── KnowledgeGraph.vue  # 图谱组件
+│   │   │   ├── KnowledgeGraph.vue  # 图谱组件
+│   │   │   └── ImageAnalysis.vue  # 图像分析组件
 │   │   ├── views/         # 页面视图
-│   │   │   └── HomeView.vue        # 主页面
+│   │   │   ├── HomeView.vue        # 主页面
+│   │   │   └── ImageAnalysisView.vue # 图像分析页面
 │   │   ├── App.vue        # 根组件
 │   │   └── main.js        # 应用入口
 │   └── package.json       # 前端依赖

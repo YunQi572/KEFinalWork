@@ -240,7 +240,7 @@ class MultiEntityAnalyzer:
             1.0
         )
         
-        return final_confidence
+        return round(final_confidence, 1)
     
     async def _validate_entity_combinations(self, detected_entities: List[Dict[str, Any]]) -> Dict[str, Any]:
         """验证实体组合"""
@@ -308,7 +308,7 @@ class MultiEntityAnalyzer:
         if confidence > 0.3:  # 最低阈值
             return {
                 "scenario": "松材线虫病",
-                "confidence": confidence,
+                "confidence": round(confidence, 1),
                 "evidence": evidence,
                 "risk_assessment": "高风险" if confidence > 0.7 else "中风险" if confidence > 0.5 else "低风险",
                 "recommendation": self._get_pine_disease_recommendation(confidence)
@@ -342,7 +342,7 @@ class MultiEntityAnalyzer:
             validation_weight = validation["highest_confidence_scenario"]["confidence"] * 0.5
         
         total_confidence = min(existing_weight + potential_weight + validation_weight, 1.0)
-        return total_confidence
+        return round(total_confidence, 1)
     
     async def _generate_recommendations(self, entities: List, existing_rels: List, potential_rels: List, validation: Dict) -> List[str]:
         """生成建议"""

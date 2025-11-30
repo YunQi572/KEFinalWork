@@ -158,6 +158,7 @@
                           :width="80"
                           type="circle"
                           :color="getConfidenceColor(entity.confidence)"
+                          :format="() => (entity.confidence * 100).toFixed(1) + '%'"
                         />
                         <div class="score-labels">
                           <div>置信度</div>
@@ -167,7 +168,7 @@
                     </div>
                     
                     <div v-if="entity.features" class="entity-features">
-                      <h5>检测特征：</h5>
+                      <h5>📊 检测特征详情：</h5>
                       <div class="features-grid">
                         <el-tag
                           v-for="(value, key) in entity.features"
@@ -175,7 +176,7 @@
                           size="small"
                           class="feature-tag"
                         >
-                          {{ key }}: {{ formatFeatureValue(value) }}
+                          {{ formatFeatureKey(key) }}: {{ formatFeatureValue(value) }}
                         </el-tag>
                       </div>
                       
@@ -624,11 +625,50 @@ const formatTime = (timestamp) => {
   return new Date(timestamp).toLocaleString('zh-CN')
 }
 
+const formatFeatureKey = (key) => {
+  const keyMap = {
+    'dominant_color': '主要颜色',
+    'texture': '纹理',
+    'detection_basis': '检测依据',
+    'avg_rgb': '平均RGB值',
+    'color_variance': '颜色方差',
+    'area': '面积',
+    'perimeter': '周长',
+    'aspect_ratio': '宽高比',
+    'compactness': '紧密度',
+    'texture_roughness': '纹理粗糙度',
+    'texture_uniformity': '纹理均匀性',
+    'brightness': '亮度',
+    'ai_detected': 'AI检测',
+    'ai_confidence': 'AI置信度',
+    'ai_description': 'AI描述',
+    'matched_kb_entity': '匹配实体',
+    'similarity_score': '相似度得分',
+    'match_reason': '匹配原因',
+    'is_unknown': '未知实体'
+  }
+  return keyMap[key] || key
+}
+
 const formatFeatureValue = (value) => {
   if (Array.isArray(value)) {
     return value.join(', ')
   } else if (typeof value === 'object') {
     return JSON.stringify(value)
+  } else if (typeof value === 'number') {
+    // 对于数值类型，根据数值大小决定保留的小数位数
+    if (Number.isInteger(value)) {
+      return String(value)
+    } else if (Math.abs(value) >= 100) {
+      // 大数值保留整数部分
+      return Math.round(value).toString()
+    } else if (Math.abs(value) >= 10) {
+      // 中等数值保留一位小数
+      return value.toFixed(1)
+    } else {
+      // 小数值保留两位小数
+      return value.toFixed(2)
+    }
   } else {
     return String(value)
   }

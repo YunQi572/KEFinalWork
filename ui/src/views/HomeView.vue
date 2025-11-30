@@ -3,7 +3,7 @@
     <!-- 顶部操作栏 -->
     <div class="top-bar">
       <div class="title">松材线虫病知识图谱系统</div>
-      
+
       <!-- 导航菜单 -->
       <div class="nav-menu">
         <router-link to="/" class="nav-link" :class="{ active: $route.name === 'home' }">
@@ -14,11 +14,6 @@
         <router-link to="/analysis" class="nav-link" :class="{ active: $route.name === 'imageAnalysis' }">
           <el-button type="text" :icon="Camera">
             图像分析
-          </el-button>
-        </router-link>
-        <router-link to="/about" class="nav-link" :class="{ active: $route.name === 'about' }">
-          <el-button type="text" :icon="InfoFilled">
-            关于系统
           </el-button>
         </router-link>
       </div>
@@ -46,9 +41,9 @@
         <el-button :icon="Refresh" @click="loadGraph" :loading="loading">
           刷新图谱
         </el-button>
-        <el-button 
-          type="success" 
-          :icon="Plus" 
+        <el-button
+          type="success"
+          :icon="Plus"
           @click="showAddHighLevelNodeDialog"
           title="添加高级节点"
         >
@@ -74,7 +69,7 @@
               <el-icon><Search /></el-icon>
             </template>
           </el-input>
-          
+
           <el-select
             v-model="filterSteps"
             placeholder="选择步数"
@@ -88,7 +83,7 @@
             <el-option label="4步" :value="4" />
             <el-option label="5步" :value="5" />
           </el-select>
-          
+
           <el-button
             v-if="searchKeyword || filterSteps !== 'none'"
             type="info"
@@ -98,7 +93,7 @@
             清除筛选
           </el-button>
         </div>
-        
+
         <div v-if="searchKeyword && filterSteps !== 'none'" class="filter-info">
           <el-tag type="info" size="small">
             显示以 "<strong>{{ searchKeyword }}</strong>" 为核心，向外 <strong>{{ filterSteps }}</strong> 步的子图
@@ -108,7 +103,7 @@
           </el-tag>
         </div>
       </div>
-      
+
       <KnowledgeGraph
         v-if="!loading"
         :nodes="filteredGraphData.nodes"
@@ -135,9 +130,9 @@
           <span class="label">您输入的实体：</span>
           <span class="entity-name">{{ pendingEntityName }}</span>
         </div>
-        
+
         <el-divider />
-        
+
         <div class="similar-list-title">
           <el-icon><Search /></el-icon>
           请选择一个与之相似的已有实体（用于推理新的关系）
@@ -145,7 +140,7 @@
             （图谱内: {{ similarStats.in_graph_count }} 个，优先显示）
           </span>
         </div>
-        
+
         <el-alert
           v-if="similarStats && similarStats.in_graph_count === 0"
           type="warning"
@@ -157,7 +152,7 @@
             当前相似词都不在图谱中，建议选择相似度最高的词进行添加
           </template>
         </el-alert>
-        
+
         <el-radio-group v-model="selectedSimilar" class="similar-list">
           <el-radio
             v-for="(item, index) in similarEntities"
@@ -182,7 +177,7 @@
           </el-radio>
         </el-radio-group>
       </div>
-      
+
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="similarDialogVisible = false">取消</el-button>
@@ -286,17 +281,17 @@
             普通节点
           </el-tag>
           <div style="margin-top: 10px;">
-            <el-button 
-              v-if="!isHighLevelNode" 
-              type="success" 
+            <el-button
+              v-if="!isHighLevelNode"
+              type="success"
               size="small"
               @click="handleAddHighLevelNodeFromDialog"
             >
               标记为高级节点
             </el-button>
-            <el-button 
-              v-else 
-              type="warning" 
+            <el-button
+              v-else
+              type="warning"
               size="small"
               @click="handleRemoveHighLevelNodeFromDialog"
             >
@@ -322,8 +317,8 @@
     >
       <el-form :model="highLevelNodeForm" label-width="100px">
         <el-form-item label="节点名称">
-          <el-input 
-            v-model="highLevelNodeForm.nodeName" 
+          <el-input
+            v-model="highLevelNodeForm.nodeName"
             placeholder="请输入要标记为高级节点的节点名称"
             @keyup.enter="handleAddHighLevelNode"
           />
@@ -344,8 +339,8 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="addHighLevelNodeDialogVisible = false">取消</el-button>
-          <el-button 
-            type="primary" 
+          <el-button
+            type="primary"
             @click="handleAddHighLevelNode"
             :loading="addingHighLevelNode"
           >
@@ -455,10 +450,10 @@ const filterSubgraph = (nodes, links, centerNodeName, maxSteps) => {
   if (!centerNodeName || maxSteps === 'none' || maxSteps === null || maxSteps === undefined) {
     return { nodes, links }
   }
-  
+
   // 找到中心节点（支持精确匹配和模糊匹配）
   let centerNode = nodes.find(n => n.name === centerNodeName)
-  
+
   // 如果精确匹配失败，尝试模糊匹配
   if (!centerNode) {
     const matchedNodes = nodes.filter(n => n.name.includes(centerNodeName))
@@ -469,17 +464,17 @@ const filterSubgraph = (nodes, links, centerNodeName, maxSteps) => {
       centerNode = matchedNodes[0]
     }
   }
-  
+
   if (!centerNode) {
     return { nodes: [], links: [] }
   }
-  
+
   // 构建邻接表（双向）
   const adjacencyList = new Map()
   nodes.forEach(node => {
     adjacencyList.set(node.name, [])
   })
-  
+
   links.forEach(link => {
     const source = link.source
     const target = link.target
@@ -490,15 +485,15 @@ const filterSubgraph = (nodes, links, centerNodeName, maxSteps) => {
       adjacencyList.get(target).push(source)
     }
   })
-  
+
   // BFS遍历，找到k步内的所有节点
   const visitedNodes = new Set()
   const queue = [{ node: centerNodeName, step: 0 }]
   visitedNodes.add(centerNodeName)
-  
+
   while (queue.length > 0) {
     const { node: currentNode, step } = queue.shift()
-    
+
     // 如果当前步数小于maxSteps，继续遍历邻居
     if (step < maxSteps) {
       const neighbors = adjacencyList.get(currentNode) || []
@@ -511,16 +506,16 @@ const filterSubgraph = (nodes, links, centerNodeName, maxSteps) => {
     }
     // 如果step >= maxSteps，不再继续遍历，但当前节点已经包含在visitedNodes中
   }
-  
+
   // 过滤节点：只保留访问到的节点
   const filteredNodes = nodes.filter(node => visitedNodes.has(node.name))
   const filteredNodeNames = new Set(filteredNodes.map(n => n.name))
-  
+
   // 过滤边：只保留两个端点都在过滤后节点集合中的边
-  const filteredLinks = links.filter(link => 
+  const filteredLinks = links.filter(link =>
     filteredNodeNames.has(link.source) && filteredNodeNames.has(link.target)
   )
-  
+
   return {
     nodes: filteredNodes,
     links: filteredLinks
@@ -544,7 +539,7 @@ const applyFilter = () => {
       filterSteps.value
     )
     filteredGraphData.value = result
-    
+
     if (result.nodes.length === 0) {
       ElMessage.warning(`未找到节点 "${searchKeyword.value}"`)
     }
@@ -597,22 +592,22 @@ const handleAddEntity = async () => {
   adding.value = true
   try {
     const result = await api.getSimilarEntities(newEntityName.value.trim())
-    
+
     // 保存待添加的实体名称和统计信息
     pendingEntityName.value = result.input
     similarEntities.value = result.similar_entities
     similarStats.value = result.stats || null
-    
+
     // 默认选择第一个相似词（优先是图谱内的）
     if (similarEntities.value.length > 0) {
       selectedSimilar.value = similarEntities.value[0].entity
     }
-    
+
     // 提示用户图谱内实体数量
     if (similarStats.value && similarStats.value.in_graph_count > 0) {
       ElMessage.info(`已找到 ${similarStats.value.in_graph_count} 个图谱内的相似实体，建议优先选择`)
     }
-    
+
     // 显示相似词选择对话框
     similarDialogVisible.value = true
   } catch (error) {
@@ -630,22 +625,22 @@ const generateTriples = async () => {
   }
 
   generating.value = true
-  
+
   try {
     const result = await api.generateTriples({
       entity_name: pendingEntityName.value,
       similar_entity: selectedSimilar.value
     })
-    
+
     // 保存候选三元组
     candidateTriples.value = result.candidate_triples
     selectedSimilarEntity.value = result.similar_entity
     selectedTripleIndex.value = candidateTriples.value.length > 0 ? 0 : null
-    
+
     // 关闭相似词对话框，打开三元组选择对话框
     similarDialogVisible.value = false
     triplesDialogVisible.value = true
-    
+
     ElMessage.success(`已生成 ${result.total_candidates} 个候选关系`)
   } catch (error) {
     ElMessage.error(`生成候选关系失败: ${error.message}`)
@@ -668,22 +663,22 @@ const confirmAddTriple = async () => {
   }
 
   const selectedTriple = candidateTriples.value[selectedTripleIndex.value]
-  
+
   adding.value = true
   triplesDialogVisible.value = false
-  
+
   try {
     const result = await api.addNodeWithTriple({
       entity_name: pendingEntityName.value,
       similar_entity: selectedSimilarEntity.value,
       selected_triple: selectedTriple
     })
-    
+
     ElMessage.success({
       message: `添加成功！${result.triple.head_entity} --[${result.triple.relation}]--> ${result.triple.tail_entity}`,
       duration: 5000
     })
-    
+
     // 清空所有状态
     newEntityName.value = ''
     pendingEntityName.value = ''
@@ -693,7 +688,7 @@ const confirmAddTriple = async () => {
     candidateTriples.value = []
     selectedTripleIndex.value = null
     selectedSimilarEntity.value = ''
-    
+
     await loadGraph()
   } catch (error) {
     ElMessage.error(`添加失败: ${error.message}`)
@@ -712,7 +707,7 @@ const handleNodeClick = (node) => {
 // 从节点编辑对话框添加高级节点
 const handleAddHighLevelNodeFromDialog = async () => {
   if (!selectedNode.value) return
-  
+
   try {
     await api.addHighLevelNode(selectedNode.value.name)
     ElMessage.success(`成功将节点 "${selectedNode.value.name}" 标记为高级节点`)
@@ -730,7 +725,7 @@ const handleAddHighLevelNodeFromDialog = async () => {
 // 从节点编辑对话框移除高级节点标记
 const handleRemoveHighLevelNodeFromDialog = async () => {
   if (!selectedNode.value) return
-  
+
   try {
     await api.removeHighLevelNode(selectedNode.value.name)
     ElMessage.success(`成功移除节点 "${selectedNode.value.name}" 的高级节点标记`)
@@ -857,7 +852,7 @@ const handleAddHighLevelNode = async () => {
     ElMessage.warning('请输入节点名称')
     return
   }
-  
+
   addingHighLevelNode.value = true
   try {
     await api.addHighLevelNode(highLevelNodeForm.value.nodeName.trim())
