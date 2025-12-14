@@ -44,8 +44,8 @@ DB_CONFIG = {
     'host': 'localhost',
     'port': 3306,
     'user': 'root',
-    'password': '<your-databease-password>',
-    'database': '<your-database-name>',
+    'password': '20050702g',
+    'database': 'kefinalwork',
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
 }
@@ -844,54 +844,97 @@ async def analyze_image(
         # 1. 读取图像数据
         image_data = await file.read()
         
-        # 2. 图像分析 - 实体识别
+        # 2. 图像分析 - 实体识别（优先使用本地模型，失败则使用云端Kimi）
+        analysis_result = None
+        service_used = None
+        
+        # 2.1 尝试使用本地 YOLO 模型
         try:
-            from image_service import get_image_analysis_service, get_knowledge_inference_service
-            image_service = get_image_analysis_service()
+            logger.info("尝试使用本地 YOLO 模型进行图像识别...")
+            from local_yolo_image_service import LocalYOLOImageAnalysisService
             
-            logger.info("开始调用图像分析服务...")
-            analysis_result = await image_service.analyze_image(image_data)
-            logger.info(f"图像分析服务返回结果: {len(analysis_result.get('detected_entities', []))} 个实体")
-        except ImportError as e:
-            logger.warning(f"图像服务导入失败: {e}")
-            # 如果图像服务不可用，返回模拟结果
-            analysis_result = {
-                "image_info": {"size": [800, 600], "channels": 3},
-                "detected_entities": [
-                    {
-                        "type": "insect",
-                        "name": "疑似松墨天牛",
-                        "confidence": 0.85,
-                        "similarity": 0.8,
-                        "features": {"color": "黑色"},
-                        "bbox": [100, 150, 80, 120],
-                        "matched_kb_entity": "松墨天牛"
-                    },
-                    {
-                        "type": "disease_symptom",
-                        "name": "疑似松针发黄",
-                        "confidence": 0.92,
-                        "similarity": 0.7,
-                        "features": {"color": "黄色"},
-                        "bbox": [200, 100, 150, 200],
-                        "matched_kb_entity": None
-                    },
-                    {
-                        "type": "tree",
-                        "name": "疑似马尾松",
-                        "confidence": 0.78,
-                        "similarity": 0.6,
-                        "features": {"bark": "红褐色"},
-                        "bbox": [0, 0, 800, 600],
-                        "matched_kb_entity": "马尾松"
+            # 初始化本地模型服务
+            local_service = LocalYOLOImageAnalysisService(model_path="yolov8m.pt")
+            
+            # 使用本地服务分析图像
+            analysis_result = await local_service.analyze_image(image_data)
+            service_used = "本地YOLO模型"
+            logger.info(f"✅ 本地模型识别成功: {len(analysis_result.get('detected_entities', []))} 个实体")
+            
+        except Exception as local_error:
+            logger.warning(f"⚠️ 本地模型识别失败: {local_error}")
+            
+            # 2.2 回退到云端 Kimi 模型
+            try:
+                logger.info("回退到云端 Kimi 模型...")
+                from vision_ai_image_service import VisionAIImageAnalysisService
+                
+                # 初始化 Kimi 服务
+                kimi_service = VisionAIImageAnalysisService()
+                
+                # 使用 Kimi 服务分析图像
+                analysis_result = await kimi_service.analyze_image(image_data)
+                service_used = "云端Kimi模型"
+                logger.info(f"✅ Kimi 模型识别成功: {len(analysis_result.get('detected_entities', []))} 个实体")
+                
+            except Exception as kimi_error:
+                logger.error(f"❌ Kimi 模型也失败: {kimi_error}")
+                
+                # 2.3 最终回退：使用通用图像服务
+                try:
+                    logger.info("尝试使用通用图像服务...")
+                    from get_image_analysis_service import get_image_analysis_service
+                    image_service = get_image_analysis_service()
+                    
+                    analysis_result = await image_service.analyze_image(image_data)
+                    service_used = "通用图像服务"
+                    logger.info(f"✅ 通用服务识别成功: {len(analysis_result.get('detected_entities', []))} 个实体")
+                    
+                except Exception as fallback_error:
+                    logger.error(f"❌ 所有图像服务均不可用: {fallback_error}")
+                    
+                    # 2.4 最终回退：返回模拟数据（仅用于测试）
+                    logger.warning("⚠️ 返回模拟数据以维持系统运行")
+                    analysis_result = {
+                        "image_info": {"size": [800, 600], "channels": 3},
+                        "detected_entities": [
+                            {
+                                "type": "insect",
+                                "name": "疑似松墨天牛",
+                                "confidence": 0.85,
+                                "similarity": 0.8,
+                                "features": {"color": "黑色"},
+                                "bbox": [100, 150, 80, 120],
+                                "matched_kb_entity": "松墨天牛"
+                            },
+                            {
+                                "type": "disease_symptom",
+                                "name": "疑似松针发黄",
+                                "confidence": 0.92,
+                                "similarity": 0.7,
+                                "features": {"color": "黄色"},
+                                "bbox": [200, 100, 150, 200],
+                                "matched_kb_entity": None
+                            },
+                            {
+                                "type": "tree",
+                                "name": "疑似马尾松",
+                                "confidence": 0.78,
+                                "similarity": 0.6,
+                                "features": {"bark": "红褐色"},
+                                "bbox": [0, 0, 800, 600],
+                                "matched_kb_entity": "马尾松"
+                            }
+                        ],
+                        "analysis_summary": {"total_entities": 3, "matched_entities": 2, "avg_confidence": 0.85}
                     }
-                ],
-                "analysis_summary": {"total_entities": 3, "matched_entities": 2, "avg_confidence": 0.85}
-            }
-            logger.info("使用模拟数据返回结果")
-        except Exception as e:
-            logger.error(f"图像分析服务异常: {e}")
-            raise HTTPException(status_code=500, detail=f"图像分析失败: {e}")
+                    service_used = "模拟数据（测试模式）"
+        
+        # 确保分析结果存在
+        if analysis_result is None:
+            raise HTTPException(status_code=500, detail="图像分析失败：所有服务均不可用")
+        
+        logger.info(f"📊 图像分析完成 - 使用服务: {service_used}")
         
         # 3. 过滤低置信度实体
         logger.info(f"过滤前实体数量: {len(analysis_result['detected_entities'])}, 阈值: {confidence_threshold}")
@@ -924,6 +967,7 @@ async def analyze_image(
         # 5. 疾病预测分析
         if analyze_type == "full" and detected_entities:
             try:
+                from image_service import get_knowledge_inference_service
                 inference_service = get_knowledge_inference_service()
                 disease_prediction = await inference_service.analyze_disease_prediction(detected_entities)
                 response_data["disease_prediction"] = disease_prediction

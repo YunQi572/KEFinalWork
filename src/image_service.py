@@ -41,7 +41,7 @@ class ImageAnalysisService:
     
     def _load_entity_features(self) -> Dict[str, Dict[str, Any]]:
         """加载实体特征数据库"""
-        # 这里定义了松材线虫病相关实体的标准特征
+        # 这里定义了松材线虫病相关实体的标准特征  创建一个字典，保存相关实体的特征和关键词
         features_db = {
             # 昆虫类
             "松墨天牛": {
@@ -150,7 +150,7 @@ class ImageAnalysisService:
             # 1. 图像预处理
             image = self._preprocess_image(image_data)
             
-            # 2. 实体识别（模拟实现）
+            # 2. 实体识别
             entities = await self._recognize_entities(image)
             
             # 3. 特征提取
@@ -163,20 +163,16 @@ class ImageAnalysisService:
             
             for entity in entities:
                 similarity = self._calculate_feature_similarity(entity)
+                # 不再限制知识库匹配，所有实体都直接返回
                 matched_kb_entity = self._find_best_match(entity) if similarity >= self.similarity_threshold else None
-                
-                # 添加调试日志
                 logger.info(f"实体: {entity.entity_name}, 置信度: {entity.confidence}, 相似度: {similarity}")
-                
                 entity_data = {
                     "entity": entity,
                     "similarity": similarity,
                     "matched_kb_entity": matched_kb_entity
                 }
-                
                 all_entities.append(entity_data)
-                if similarity >= self.similarity_threshold:
-                    matched_entities.append(entity_data)
+                matched_entities.append(entity_data)
             
             # 5. 构建分析结果
             result = {
@@ -377,7 +373,7 @@ class ImageAnalysisService:
             
             # 调用AI分析
             response = kimi_service.client.chat.completions.create(
-                model="moonshot-v1-8k",
+                model="moonshot-v1-8k-vision-preview",
                 messages=[
                     {
                         "role": "system", 
